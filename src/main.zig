@@ -8,10 +8,12 @@ const hiddenTiles = 3;
 const boardHeight = 23;
 const boardWidth = 10;
 
+const tileSpacing = 5;
+
 const boardScale: f32 = 0.75;
 
-var screenHeight: i32 = 1000 * boardScale;
-var screenWidth: i32 = 500 * boardScale;
+var screenHeight: i32 = 1000;
+var screenWidth: i32 = 500;
 
 const Tile = union(enum) {
     Filled: rl.Color,
@@ -24,32 +26,6 @@ const Shape = struct {
         color: rl.Color,
     },
     origin: usize, // should always be the index of the block at 0,0 initially
-
-    //TODO: check for collision while rotating
-    fn rotate(self: *@This()) void {
-        var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
-        for (0.., self.blocks) |i, j| {
-            const tmp = j.point.x - self.blocks[self.origin].point.x;
-            newBlocks[i].point.x = -(j.point.y - self.blocks[self.origin].point.y);
-            newBlocks[i].point.y = tmp;
-        }
-        for (0.., newBlocks) |i, v| {
-            self.blocks[i].point.x = v.point.x + self.blocks[self.origin].point.x;
-            self.blocks[i].point.y = v.point.y + self.blocks[self.origin].point.y;
-        }
-    }
-    fn rotateLeft(self: *@This()) void {
-        var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
-        for (0.., self.blocks) |i, j| {
-            const tmp = j.point.x - self.blocks[self.origin].point.x;
-            newBlocks[i].point.x = (j.point.y - self.blocks[self.origin].point.y);
-            newBlocks[i].point.y = -tmp;
-        }
-        for (0.., newBlocks) |i, v| {
-            self.blocks[i].point.x = v.point.x + self.blocks[self.origin].point.x;
-            self.blocks[i].point.y = v.point.y + self.blocks[self.origin].point.y;
-        }
-    }
 
     fn maxWidth(self: @This()) usize {
         const w = self.width();
@@ -73,7 +49,6 @@ const Shape = struct {
                 xWidth += 1;
                 curX = sortedBlocks[i].point.x;
             }
-            std.debug.print("xWidth: {}\n", .{xWidth});
         }
         return xWidth;
     }
@@ -94,7 +69,6 @@ const Shape = struct {
                 yWidth += 1;
                 curY = sortedBlocks[i].point.y;
             }
-            std.debug.print("yWidth: {}\n", .{yWidth});
         }
         return yWidth;
     }
@@ -107,6 +81,15 @@ const Shape = struct {
             }
         }
         return minx;
+    }
+    fn minY(self: @This()) i8 {
+        var miny: i8 = 0;
+        for (self.blocks) |i| {
+            if (@as(i8, @intFromFloat(i.point.y)) < miny) {
+                miny = @intFromFloat(i.point.y);
+            }
+        }
+        return miny;
     }
     fn maxY(self: @This()) i8 {
         var maxy: i8 = 0;
@@ -202,13 +185,63 @@ const Board = struct {
     fn newFallingShape(self: *@This(), shape: Shape) void {
         self.fallingShape = shape;
         const pad: f32 = @as(f32, @floatFromInt((boardWidth - self.fallingShape.maxWidth()) / 2));
-        std.debug.print("pad: {}\n", .{pad});
         if (self.fallingShape.width() < self.fallingShape.height()) {
-            self.fallingShape.rotateLeft();
+            self.rotateLeft();
         }
         for (&self.fallingShape.blocks) |*i| {
             i.point.x += pad + 1;
             i.point.y -= hiddenTiles;
+        }
+    }
+
+    //FIXME: Hey this rotation shit aint cutting it, it doesnt work like traditional tetris at all tbh
+
+    fn rotate(self: *@This()) void {
+        var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
+        const ox = self.fallingShape.blocks[self.fallingShape.origin].point.x;
+        const oy = self.fallingShape.blocks[self.fallingShape.origin].point.y;
+
+        for (0.., self.fallingShape.blocks) |i, j| {
+            const tmp = j.point.x - self.fallingShape.blocks[self.fallingShape.origin].point.x;
+            newBlocks[i].point.x = -(j.point.y - self.fallingShape.blocks[self.fallingShape.origin].point.y);
+            newBlocks[i].point.y = tmp;
+            if (newBlocks[i].point.x + ox >= 0 and newBlocks[i].point.y + oy >= 0) {
+                const ix: usize = @intFromFloat(newBlocks[i].point.x + ox);
+                const iy: usize = @intFromFloat(newBlocks[i].point.y + oy);
+                if (ix >= boardWidth or iy >= boardHeight) return;
+                switch (self.tiles[ix][iy]) {
+                    .Filled => return,
+                    else => {},
+                }
+            } else if (newBlocks[i].point.x + ox < 0) return;
+        }
+        for (0.., newBlocks) |i, v| {
+            self.fallingShape.blocks[i].point.x = v.point.x + ox;
+            self.fallingShape.blocks[i].point.y = v.point.y + oy;
+        }
+    }
+    fn rotateLeft(self: *@This()) void {
+        var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
+        const ox = self.fallingShape.blocks[self.fallingShape.origin].point.x;
+        const oy = self.fallingShape.blocks[self.fallingShape.origin].point.y;
+
+        for (0.., self.fallingShape.blocks) |i, j| {
+            const tmp = j.point.x - self.fallingShape.blocks[self.fallingShape.origin].point.x;
+            newBlocks[i].point.x = (j.point.y - self.fallingShape.blocks[self.fallingShape.origin].point.y);
+            newBlocks[i].point.y = -tmp;
+            if (newBlocks[i].point.x + ox >= 0 and newBlocks[i].point.y + oy >= 0) {
+                const ix: usize = @intFromFloat(newBlocks[i].point.x + ox);
+                const iy: usize = @intFromFloat(newBlocks[i].point.y + oy);
+                if (ix >= boardWidth or iy >= boardHeight) return;
+                switch (self.tiles[ix][iy]) {
+                    .Filled => return,
+                    else => {},
+                }
+            } else if (newBlocks[i].point.x + ox < 0) return;
+        }
+        for (0.., newBlocks) |i, v| {
+            self.fallingShape.blocks[i].point.x = v.point.x + ox;
+            self.fallingShape.blocks[i].point.y = v.point.y + oy;
         }
     }
 
@@ -295,7 +328,6 @@ const Game = struct {
         try self.nextShape();
     }
 
-    //FIXME: bag is not drawing an equal amount of each piece
     fn mixNewBag(self: *@This()) !void {
         const contains = struct {
             fn contains(arr: std.ArrayList(Shape), target: Shape) bool {
@@ -336,23 +368,21 @@ const Game = struct {
         }
     }
 
-    fn drawBoard(self: @This()) void {
+    fn drawBoard(self: @This()) !void {
         const fScreenWidth: f32 = @floatFromInt(screenWidth);
         const fScreenHeight: f32 = @floatFromInt(screenHeight);
         const fBoardWidth: f32 = @floatFromInt(boardWidth);
         const fBoardHeight: f32 = @floatFromInt(boardHeight);
 
-        const monitorHeight: f32 = @floatFromInt(rl.getMonitorHeight(rl.getCurrentMonitor()));
+        // const monitorHeight: f32 = @floatFromInt(rl.getMonitorHeight(rl.getCurrentMonitor()));
 
-        const maxSize: f32 = (boardScale * monitorHeight / (fBoardHeight - hiddenTiles));
+        // const maxSize: f32 = (monitorHeight / (fBoardHeight));
 
-        var tileWidth: f32 = fScreenWidth / fBoardWidth - 1;
-        var tileHeight: f32 = fScreenHeight / fBoardHeight;
-        if (tileWidth > maxSize) tileWidth = maxSize;
-        if (tileHeight > maxSize) tileHeight = maxSize;
+        const tileWidth: f32 = boardScale * (fScreenHeight / (fBoardHeight));
+        const tileHeight: f32 = boardScale * (fScreenHeight / (fBoardHeight));
 
-        const padH = (fScreenWidth - (fBoardWidth * (tileWidth + 1))) / 2;
-        const padV = (fScreenHeight - (fBoardHeight * (tileHeight - hiddenTiles - 1))) / 2;
+        const padH = (fScreenWidth - fBoardWidth * tileWidth) / 2;
+        const padV = ((fScreenHeight - fBoardHeight * tileHeight) + hiddenTiles * tileHeight) / 2;
 
         for (0..boardWidth) |x| {
             for (0..boardHeight - hiddenTiles) |y| {
@@ -361,24 +391,68 @@ const Game = struct {
                     .Empty => if ((x + y) % 2 == 0) self.bgColors[0] else self.bgColors[1],
                 };
 
+                const tileSpaceScale: f32 = switch (self.board.tiles[x][y]) {
+                    .Filled => 1,
+                    .Empty => 0,
+                };
+
                 const fx: f32 = @floatFromInt(x);
                 const fy: f32 = @floatFromInt(y);
 
                 rl.drawRectangleV(
-                    Vec2{ .x = (tileWidth * fx) + fx + padH, .y = (tileWidth * fy) + fy + padV },
-                    Vec2{ .x = tileWidth, .y = tileWidth },
+                    Vec2.init(
+                        (tileWidth * fx) + tileSpaceScale * (tileSpacing / 2) + padH,
+                        (tileWidth * fy) + tileSpaceScale * (tileSpacing / 2) + padV,
+                    ),
+                    Vec2.init(
+                        tileWidth - tileSpaceScale * (tileSpacing),
+                        tileWidth - tileSpaceScale * (tileSpacing),
+                    ),
                     c,
                 );
             }
         }
-
-        for (self.board.fallingShape.blocks) |v| {
+        var x = true;
+        var ghost = self.board.fallingShape;
+        while (x) {
+            if (ghost.maxY() + 1 >= boardHeight - hiddenTiles) x = false;
+            for (0.., self.board.tiles) |i, columns| {
+                for (0.., columns) |j, tile| {
+                    switch (tile) {
+                        .Filled => {
+                            for (ghost.blocks) |b| {
+                                if (b.point.x == @as(f32, @floatFromInt(i)) and b.point.y + 1 == @as(f32, @floatFromInt(j))) {
+                                    x = false;
+                                }
+                            }
+                        },
+                        .Empty => {},
+                    }
+                }
+            }
+            if (!x) break;
+            for (&ghost.blocks) |*i| {
+                i.point.y += 1;
+            }
+        }
+        for (self.board.fallingShape.blocks, ghost.blocks) |v, k| {
             rl.drawRectangleLinesEx(.{
-                .height = tileWidth,
-                .width = tileWidth,
-                .x = (tileWidth * v.point.x) + v.point.x + padH,
-                .y = (tileWidth * v.point.y) + v.point.y + padV,
+                .height = tileWidth - tileSpacing,
+                .width = tileWidth - tileSpacing,
+                .x = (tileWidth * v.point.x) + tileSpacing / 2 + padH,
+                .y = (tileWidth * v.point.y) + tileSpacing / 2 + padV,
             }, 5, v.color);
+            rl.drawRectangleV(
+                Vec2.init(
+                    (tileWidth * k.point.x) + tileSpacing / 2 + padH,
+                    (tileWidth * k.point.y) + tileSpacing / 2 + padV,
+                ),
+                Vec2.init(
+                    tileWidth - tileSpacing,
+                    tileWidth - tileSpacing,
+                ),
+                mc.FFFg,
+            );
         }
     }
 };
@@ -394,7 +468,7 @@ pub fn main() !void {
 
     rl.initWindow(screenWidth, screenHeight, "Tetris");
     defer rl.closeWindow();
-    rl.setTargetFPS(60);
+    // rl.setTargetFPS(60);
 
     var g = Game.init(allocator);
 
@@ -417,29 +491,41 @@ pub fn main() !void {
         if (paused) continue;
 
         rl.clearBackground(mc.FFBg);
+        rl.drawFPS(0, 0);
 
         if (std.meta.eql(g.board.fallingShape, undefined)) {
             try g.nextShape();
         }
 
         if (rl.isKeyPressed(.key_r) and !rl.isKeyDown(.key_left_shift)) {
-            g.board.fallingShape.rotate();
+            g.board.rotate();
         }
         if (rl.isKeyPressed(.key_r) and rl.isKeyDown(.key_left_shift)) {
-            g.board.fallingShape.rotateLeft();
+            g.board.rotateLeft();
         }
 
-        if (deltaMove.read() / std.time.ns_per_ms >= 75) {
-            if (rl.isKeyDown(.key_left)) {
+        if (rl.isKeyPressed(.key_space)) {
+            while (g.board.updateFallingShape()) {}
+            var canFinalize = true;
+            for (g.board.fallingShape.blocks) |i| {
+                if (i.point.y < 0) {
+                    canFinalize = false;
+                }
+            }
+            if (canFinalize) try g.finalizeFallingShape() else g.clearBoard();
+        }
+
+        if (deltaMove.read() / std.time.ns_per_ms >= 40) {
+            if (rl.isKeyDown(.key_left) or rl.isKeyPressed(.key_left)) {
                 g.board.moveShapeLeft();
             }
-            if (rl.isKeyDown(.key_right)) {
+            if (rl.isKeyDown(.key_right) or rl.isKeyPressed(.key_right)) {
                 g.board.moveShapeRight();
             }
             deltaMove.reset();
         }
 
-        if (deltaFall.read() / std.time.ns_per_ms >= 100) {
+        if (deltaFall.read() / std.time.ns_per_ms >= 1000) {
             if (!g.board.updateFallingShape()) {
                 var canFinalize = true;
                 for (g.board.fallingShape.blocks) |i| {
@@ -455,6 +541,6 @@ pub fn main() !void {
 
             deltaFall.reset();
         }
-        g.drawBoard();
+        try g.drawBoard();
     }
 }

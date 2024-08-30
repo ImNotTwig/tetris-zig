@@ -10,3 +10,4 @@ pub const FFMagenta = rl.Color.init(244, 154, 195, 255);
 
 pub const FFBg = rl.Color.init(15, 16, 16, 255);
 pub const FFBgAlt = rl.Color.init(42, 42, 42, 255);
+pub const FFFg = rl.Color.init(201, 199, 205, 255);
