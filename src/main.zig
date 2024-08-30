@@ -196,6 +196,16 @@ const Board = struct {
 
     //FIXME: Hey this rotation shit aint cutting it, it doesnt work like traditional tetris at all tbh
 
+    fn rotateNew(self: *@This()) void {
+        var averageCoord = Vec2{ .x = 0, .y = 0 };
+        for (self.fallingShape.blocks) |block| {
+            averageCoord.x += block.point.x;
+            averageCoord.y += block.point.y;
+        }
+        averageCoord.x /= self.fallingShape.blocks.len;
+        averageCoord.y /= self.fallingShape.blocks.len;
+    }
+
     fn rotate(self: *@This()) void {
         var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
         const ox = self.fallingShape.blocks[self.fallingShape.origin].point.x;
@@ -218,6 +228,7 @@ const Board = struct {
         for (0.., newBlocks) |i, v| {
             self.fallingShape.blocks[i].point.x = v.point.x + ox;
             self.fallingShape.blocks[i].point.y = v.point.y + oy;
+            if (self.fallingShape.blocks[i].point.x == 0 and self.fallingShape.blocks[i].point.y == 0) self.fallingShape.origin = i;
         }
     }
     fn rotateLeft(self: *@This()) void {
@@ -455,6 +466,21 @@ const Game = struct {
             );
         }
     }
+
+    fn tryFinalize(self: *@This()) !void {
+        var canFinalize = true;
+        if (!self.board.updateFallingShape()) {
+            for (self.board.fallingShape.blocks) |i| {
+                if (i.point.y < 0) {
+                    canFinalize = false;
+                }
+            }
+            if (canFinalize) try self.finalizeFallingShape() else self.clearBoard();
+            if (self.bag.items.len == 0) {
+                try self.mixNewBag();
+            }
+        }
+    }
 };
 
 pub fn main() !void {
@@ -468,12 +494,12 @@ pub fn main() !void {
 
     rl.initWindow(screenWidth, screenHeight, "Tetris");
     defer rl.closeWindow();
-    // rl.setTargetFPS(60);
 
     var g = Game.init(allocator);
 
     var deltaFall = try std.time.Timer.start();
     var deltaMove = try std.time.Timer.start();
+    var deltaSlowDrop = try std.time.Timer.start();
     var paused = false;
 
     while (!rl.windowShouldClose()) {
@@ -491,7 +517,7 @@ pub fn main() !void {
         if (paused) continue;
 
         rl.clearBackground(mc.FFBg);
-        rl.drawFPS(0, 0);
+        // rl.drawFPS(0, 0);
 
         if (std.meta.eql(g.board.fallingShape, undefined)) {
             try g.nextShape();
@@ -504,15 +530,16 @@ pub fn main() !void {
             g.board.rotateLeft();
         }
 
+        if (deltaSlowDrop.read() / std.time.ns_per_ms >= 40) {
+            if (rl.isKeyDown(.key_down)) {
+                _ = g.board.updateFallingShape();
+            }
+            deltaSlowDrop.reset();
+        }
+
         if (rl.isKeyPressed(.key_space)) {
             while (g.board.updateFallingShape()) {}
-            var canFinalize = true;
-            for (g.board.fallingShape.blocks) |i| {
-                if (i.point.y < 0) {
-                    canFinalize = false;
-                }
-            }
-            if (canFinalize) try g.finalizeFallingShape() else g.clearBoard();
+            try g.tryFinalize();
         }
 
         if (deltaMove.read() / std.time.ns_per_ms >= 40) {
@@ -525,20 +552,9 @@ pub fn main() !void {
             deltaMove.reset();
         }
 
+        //TODO: make an infiniy mechanic eg: https://tetris.fandom.com/wiki/Infinity
         if (deltaFall.read() / std.time.ns_per_ms >= 1000) {
-            if (!g.board.updateFallingShape()) {
-                var canFinalize = true;
-                for (g.board.fallingShape.blocks) |i| {
-                    if (i.point.y < 0) {
-                        canFinalize = false;
-                    }
-                }
-                if (canFinalize) try g.finalizeFallingShape() else g.clearBoard();
-                if (g.bag.items.len == 0) {
-                    try g.mixNewBag();
-                }
-            }
-
+            try g.tryFinalize();
             deltaFall.reset();
         }
         try g.drawBoard();
