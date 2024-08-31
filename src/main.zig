@@ -223,7 +223,7 @@ const Board = struct {
                     .Filled => return,
                     else => {},
                 }
-            } else if (newBlocks[i].point.x + ox < 0) return;
+            } else if (newBlocks[i].point.x + ox < 0 or newBlocks[i].point.x + ox >= boardWidth) return;
         }
         for (0.., newBlocks) |i, v| {
             self.fallingShape.blocks[i].point.x = v.point.x + ox;
@@ -496,6 +496,8 @@ pub fn main() !void {
     defer rl.closeWindow();
 
     var g = Game.init(allocator);
+    try g.mixNewBag();
+    try g.nextShape();
 
     var deltaFall = try std.time.Timer.start();
     var deltaMove = try std.time.Timer.start();
@@ -517,7 +519,7 @@ pub fn main() !void {
         if (paused) continue;
 
         rl.clearBackground(mc.FFBg);
-        // rl.drawFPS(0, 0);
+        rl.drawFPS(0, 0);
 
         if (std.meta.eql(g.board.fallingShape, undefined)) {
             try g.nextShape();
