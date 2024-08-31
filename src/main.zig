@@ -149,9 +149,9 @@ const Shape = struct {
     const O = Shape{
         .blocks = .{
             .{ .point = Vec2.init(-1, 0), .color = mc.FFYellow },
-            .{ .point = Vec2.init(-1, 1), .color = mc.FFYellow },
+            .{ .point = Vec2.init(-1, -1), .color = mc.FFYellow },
             .{ .point = Vec2.init(0, 0), .color = mc.FFYellow },
-            .{ .point = Vec2.init(0, 1), .color = mc.FFYellow },
+            .{ .point = Vec2.init(0, -1), .color = mc.FFYellow },
         },
         .origin = 2,
     };
@@ -194,65 +194,75 @@ const Board = struct {
         }
     }
 
-    //FIXME: Hey this rotation shit aint cutting it, it doesnt work like traditional tetris at all tbh
-
-    fn rotateNew(self: *@This()) void {
-        var averageCoord = Vec2{ .x = 0, .y = 0 };
-        for (self.fallingShape.blocks) |block| {
-            averageCoord.x += block.point.x;
-            averageCoord.y += block.point.y;
-        }
-        averageCoord.x /= self.fallingShape.blocks.len;
-        averageCoord.y /= self.fallingShape.blocks.len;
-    }
+    //TODO: Bounds checking, wall kicking, stuff like that for when we try rotating into a block or out of bounds
 
     fn rotate(self: *@This()) void {
-        var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
-        const ox = self.fallingShape.blocks[self.fallingShape.origin].point.x;
-        const oy = self.fallingShape.blocks[self.fallingShape.origin].point.y;
+        const origin = self.fallingShape.blocks[self.fallingShape.origin].point;
 
-        for (0.., self.fallingShape.blocks) |i, j| {
-            const tmp = j.point.x - self.fallingShape.blocks[self.fallingShape.origin].point.x;
-            newBlocks[i].point.x = -(j.point.y - self.fallingShape.blocks[self.fallingShape.origin].point.y);
-            newBlocks[i].point.y = tmp;
-            if (newBlocks[i].point.x + ox >= 0 and newBlocks[i].point.y + oy >= 0) {
-                const ix: usize = @intFromFloat(newBlocks[i].point.x + ox);
-                const iy: usize = @intFromFloat(newBlocks[i].point.y + oy);
-                if (ix >= boardWidth or iy >= boardHeight) return;
-                switch (self.tiles[ix][iy]) {
-                    .Filled => return,
-                    else => {},
-                }
-            } else if (newBlocks[i].point.x + ox < 0 or newBlocks[i].point.x + ox >= boardWidth) return;
+        var originalShape = Shape.I;
+        originalShape.origin = self.fallingShape.origin;
+        for (0.., self.fallingShape.blocks) |i, block| {
+            originalShape.blocks[i].point.x = block.point.x - origin.x;
+            originalShape.blocks[i].point.y = block.point.y - origin.y;
+            originalShape.blocks[i].color = block.color;
         }
-        for (0.., newBlocks) |i, v| {
-            self.fallingShape.blocks[i].point.x = v.point.x + ox;
-            self.fallingShape.blocks[i].point.y = v.point.y + oy;
-            if (self.fallingShape.blocks[i].point.x == 0 and self.fallingShape.blocks[i].point.y == 0) self.fallingShape.origin = i;
+
+        var isO = true;
+        for (originalShape.blocks, Shape.O.blocks) |originalBlocks, oBlocks| {
+            if (originalBlocks.point.x != oBlocks.point.x or
+                originalBlocks.point.y != oBlocks.point.y)
+            {
+                isO = false;
+            }
+        }
+        // in Tetris, the O doesnt actually rotate, so...
+        if (isO) {
+            return;
+        }
+
+        for (&originalShape.blocks) |*block| {
+            const tmp = block.point.x;
+            block.point.x = -(block.point.y);
+            block.point.y = tmp;
+        }
+        for (&self.fallingShape.blocks, originalShape.blocks) |*block, originalBlock| {
+            block.point.x = originalBlock.point.x + origin.x;
+            block.point.y = originalBlock.point.y + origin.y;
         }
     }
-    fn rotateLeft(self: *@This()) void {
-        var newBlocks: [4]struct { point: Vec2, color: rl.Color } = undefined;
-        const ox = self.fallingShape.blocks[self.fallingShape.origin].point.x;
-        const oy = self.fallingShape.blocks[self.fallingShape.origin].point.y;
 
-        for (0.., self.fallingShape.blocks) |i, j| {
-            const tmp = j.point.x - self.fallingShape.blocks[self.fallingShape.origin].point.x;
-            newBlocks[i].point.x = (j.point.y - self.fallingShape.blocks[self.fallingShape.origin].point.y);
-            newBlocks[i].point.y = -tmp;
-            if (newBlocks[i].point.x + ox >= 0 and newBlocks[i].point.y + oy >= 0) {
-                const ix: usize = @intFromFloat(newBlocks[i].point.x + ox);
-                const iy: usize = @intFromFloat(newBlocks[i].point.y + oy);
-                if (ix >= boardWidth or iy >= boardHeight) return;
-                switch (self.tiles[ix][iy]) {
-                    .Filled => return,
-                    else => {},
-                }
-            } else if (newBlocks[i].point.x + ox < 0) return;
+    fn rotateLeft(self: *@This()) void {
+        const origin = self.fallingShape.blocks[self.fallingShape.origin].point;
+
+        var originalShape = Shape.I;
+        originalShape.origin = self.fallingShape.origin;
+        for (0.., self.fallingShape.blocks) |i, block| {
+            originalShape.blocks[i].point.x = block.point.x - origin.x;
+            originalShape.blocks[i].point.y = block.point.y - origin.y;
+            originalShape.blocks[i].color = block.color;
         }
-        for (0.., newBlocks) |i, v| {
-            self.fallingShape.blocks[i].point.x = v.point.x + ox;
-            self.fallingShape.blocks[i].point.y = v.point.y + oy;
+
+        var isO = true;
+        for (originalShape.blocks, Shape.O.blocks) |originalBlocks, oBlocks| {
+            if (originalBlocks.point.x != oBlocks.point.x or
+                originalBlocks.point.y != oBlocks.point.y)
+            {
+                isO = false;
+            }
+        }
+        // in Tetris, the O doesnt actually rotate, so...
+        if (isO) {
+            return;
+        }
+
+        for (&originalShape.blocks) |*block| {
+            const tmp = block.point.x;
+            block.point.x = (block.point.y);
+            block.point.y = -tmp;
+        }
+        for (&self.fallingShape.blocks, originalShape.blocks) |*block, originalBlock| {
+            block.point.x = originalBlock.point.x + origin.x;
+            block.point.y = originalBlock.point.y + origin.y;
         }
     }
 
